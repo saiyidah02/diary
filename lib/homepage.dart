@@ -219,23 +219,6 @@ class _HomePageState extends State<HomePage> {
                     );
                   },
                 ),
-      bottomNavigationBar: BottomAppBar(
-        shape: const CircularNotchedRectangle(),
-        notchMargin: 8,
-        child: Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
-          child: Row(
-            mainAxisAlignment: MainAxisAlignment.end,
-            children: [
-              IconButton(
-                icon: const Icon(Icons.mic, color: Colors.grey),
-                onPressed: _recordVoiceNote,
-                tooltip: 'Record voice note',
-              ),
-            ],
-          ),
-        ),
-      ),
       floatingActionButtonLocation: FloatingActionButtonLocation.endDocked,
       floatingActionButton: FloatingActionButton(
         child: const Icon(Icons.add),
