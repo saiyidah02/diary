@@ -131,36 +131,94 @@ class _HomePageState extends State<HomePage> {
           ? const Center(
               child: CircularProgressIndicator(),
             )
-          : ListView.builder(
-              itemCount: _diaries.length,
-              itemBuilder: (context, index) => Card(
-                color: Colors.tealAccent,
-                margin: const EdgeInsets.all(10),
-                child: ListTile(
-                    leading: CircleAvatar(
-                              child: Image.asset('assets/images/happy.gif'),
-                              backgroundColor: Colors.tealAccent,
-                    ),
-                    title: Text(_diaries[index]['feeling']),
-                    subtitle: Text(_diaries[index]['description'] + '\n\n'+ _diaries[index]['createdAt']),
-                    trailing: SizedBox(
-                      width: 100,
-                      child: Row(
-                        children: [
-                          IconButton(
-                            icon: const Icon(Icons.edit),
-                            onPressed: () => _showForm(_diaries[index]['id']),
-                          ),
-                          IconButton(
-                            icon: const Icon(Icons.delete),
-                            onPressed: () =>
-                                _deleteDiary(_diaries[index]['id']),
-                          ),
-                        ],
+          : _diaries.isEmpty
+              ? const Center(
+                  child: Text(
+                    'No diary entries yet. Tap + to add one.',
+                    textAlign: TextAlign.center,
+                    style: TextStyle(fontSize: 16, color: Colors.black54),
+                  ),
+                )
+              : ListView.builder(
+                  padding:
+                      const EdgeInsets.symmetric(vertical: 12, horizontal: 12),
+                  itemCount: _diaries.length,
+                  itemBuilder: (context, index) {
+                    final diary = _diaries[index];
+                    return Card(
+                      color: Colors.teal[50],
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(16),
                       ),
-                    )),
-              ),
-            ),
+                      elevation: 2,
+                      margin: const EdgeInsets.symmetric(vertical: 8),
+                      child: ListTile(
+                        contentPadding: const EdgeInsets.symmetric(
+                          vertical: 14,
+                          horizontal: 16,
+                        ),
+                        leading: CircleAvatar(
+                          radius: 26,
+                          backgroundColor: Colors.white,
+                          child: ClipOval(
+                            child: Image.asset(
+                              'assets/images/happy.gif',
+                              fit: BoxFit.cover,
+                              width: 42,
+                              height: 42,
+                            ),
+                          ),
+                        ),
+                        title: Text(
+                          diary['feeling'] ?? '',
+                          style: const TextStyle(
+                            fontSize: 18,
+                            fontWeight: FontWeight.w700,
+                          ),
+                        ),
+                        subtitle: Padding(
+                          padding: const EdgeInsets.only(top: 8),
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              Text(
+                                diary['description'] ?? '',
+                                style: const TextStyle(fontSize: 14),
+                              ),
+                              const SizedBox(height: 8),
+                              Text(
+                                diary['createdAt'] ?? '',
+                                style: TextStyle(
+                                  fontSize: 12,
+                                  color: Colors.grey[700],
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                        trailing: SizedBox(
+                          width: 96,
+                          child: Row(
+                            mainAxisAlignment: MainAxisAlignment.end,
+                            children: [
+                              IconButton(
+                                icon:
+                                    const Icon(Icons.edit, color: Colors.teal),
+                                onPressed: () => _showForm(diary['id']),
+                              ),
+                              IconButton(
+                                icon: const Icon(Icons.delete,
+                                    color: Colors.redAccent),
+                                onPressed: () => _deleteDiary(diary['id']),
+                              ),
+                            ],
+                          ),
+                        ),
+                      ),
+                    );
+                  },
+                ),
       floatingActionButton: FloatingActionButton(
         child: const Icon(Icons.add),
         onPressed: () => _showForm(null),
