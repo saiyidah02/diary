@@ -125,7 +125,7 @@ class _HomePageState extends State<HomePage> {
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
-        title: const Text("Awie's Diary"),
+        title: const Text("My Diary"),
       ),
       body: _isLoading
           ? const Center(
@@ -219,10 +219,82 @@ class _HomePageState extends State<HomePage> {
                     );
                   },
                 ),
+      bottomNavigationBar: BottomAppBar(
+        shape: const CircularNotchedRectangle(),
+        notchMargin: 8,
+        child: Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+          child: Row(
+            mainAxisAlignment: MainAxisAlignment.end,
+            children: [
+              IconButton(
+                icon: const Icon(Icons.mic, color: Colors.grey),
+                onPressed: _recordVoiceNote,
+                tooltip: 'Record voice note',
+              ),
+            ],
+          ),
+        ),
+      ),
+      floatingActionButtonLocation: FloatingActionButtonLocation.endDocked,
       floatingActionButton: FloatingActionButton(
         child: const Icon(Icons.add),
-        onPressed: () => _showForm(null),
+        onPressed: _showEntryOptions,
       ),
     );
+  }
+
+  void _showEntryOptions() {
+    showModalBottomSheet(
+      context: context,
+      elevation: 5,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(16)),
+      ),
+      builder: (context) {
+        return SafeArea(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              ListTile(
+                leading: const Icon(Icons.text_fields, color: Colors.teal),
+                title: const Text('Add text entry'),
+                onTap: () {
+                  Navigator.of(context).pop();
+                  _showForm(null);
+                },
+              ),
+              ListTile(
+                leading: const Icon(Icons.emoji_emotions, color: Colors.teal),
+                title: const Text('Add emoji entry'),
+                onTap: () {
+                  Navigator.of(context).pop();
+                  _showForm(null);
+                },
+              ),
+              ListTile(
+                leading: const Icon(Icons.mic, color: Colors.grey),
+                title: const Text('Add voice entry'),
+                onTap: () {
+                  Navigator.of(context).pop();
+                  _addVoiceEntry();
+                },
+              ),
+            ],
+          ),
+        );
+      },
+    );
+  }
+
+  void _addVoiceEntry() {
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(
+          content: Text('Voice entry recording not implemented yet.')),
+    );
+  }
+
+  void _recordVoiceNote() {
+    _addVoiceEntry();
   }
 }
