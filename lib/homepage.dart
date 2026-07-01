@@ -13,6 +13,8 @@ class _HomePageState extends State<HomePage> {
   List<Map<String, dynamic>> _diaries = [];
 
   bool _isLoading = true;
+  String _currentView = 'list';
+  DateTime _calendarMonth = DateTime.now();
 
   // This function is used to fetch all diary data from the database
   void _refreshDiaries() async {
@@ -239,6 +241,243 @@ class _HomePageState extends State<HomePage> {
     return '${parsed.hour.toString().padLeft(2, '0')}:${parsed.minute.toString().padLeft(2, '0')}';
   }
 
+  String _monthName(int month) {
+    const months = [
+      'January',
+      'February',
+      'March',
+      'April',
+      'May',
+      'June',
+      'July',
+      'August',
+      'September',
+      'October',
+      'November',
+      'December'
+    ];
+    return months[month - 1];
+  }
+
+  Set<String> _diaryDateKeys() {
+    return _diaries
+        .map((entry) {
+          final createdAt = _parseDiaryDate(entry['createdAt'] as String?);
+          if (createdAt == null) return null;
+          return DateTime(createdAt.year, createdAt.month, createdAt.day)
+              .toIso8601String();
+        })
+        .whereType<String>()
+        .toSet();
+  }
+
+  List<Map<String, dynamic>> _diariesForDate(DateTime date) {
+    final target = DateTime(date.year, date.month, date.day);
+    return _diaries.where((entry) {
+      final createdAt = _parseDiaryDate(entry['createdAt'] as String?);
+      return createdAt != null &&
+          createdAt.year == target.year &&
+          createdAt.month == target.month &&
+          createdAt.day == target.day;
+    }).toList();
+  }
+
+  void _showEntriesForDate(DateTime date) {
+    final entries = _diariesForDate(date);
+    if (entries.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('No entries for this day.')),
+      );
+      return;
+    }
+
+    showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(16)),
+      ),
+      builder: (_) {
+        final sortedEntries = List<Map<String, dynamic>>.from(entries)
+          ..sort((a, b) {
+            final first = _parseDiaryDate(a['createdAt'] as String?);
+            final second = _parseDiaryDate(b['createdAt'] as String?);
+            if (first == null || second == null) return 0;
+            return first.compareTo(second);
+          });
+
+        return DraggableScrollableSheet(
+          expand: false,
+          initialChildSize: 0.7,
+          maxChildSize: 0.9,
+          builder: (sheetContext, scrollController) {
+            return Padding(
+              padding: const EdgeInsets.all(16),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    '${date.day} ${_monthName(date.month)} ${date.year}',
+                    style: const TextStyle(
+                      fontSize: 18,
+                      fontWeight: FontWeight.bold,
+                    ),
+                  ),
+                  const SizedBox(height: 12),
+                  Expanded(
+                    child: ListView.builder(
+                      controller: scrollController,
+                      itemCount: sortedEntries.length,
+                      itemBuilder: (context, index) {
+                        final entry = sortedEntries[index];
+                        return Card(
+                          margin: const EdgeInsets.only(bottom: 12),
+                          child: ListTile(
+                            title: Text(
+                                entry['feeling'] as String? ?? 'No emotion'),
+                            subtitle:
+                                Text(entry['description'] as String? ?? ''),
+                            trailing: IconButton(
+                              icon: const Icon(Icons.edit, color: Colors.teal),
+                              onPressed: () {
+                                Navigator.of(context).pop();
+                                _showForm(entry['id'] as int);
+                              },
+                            ),
+                          ),
+                        );
+                      },
+                    ),
+                  ),
+                ],
+              ),
+            );
+          },
+        );
+      },
+    );
+  }
+
+  Widget _buildCalendarView() {
+    final dateKeys = _diaryDateKeys();
+    final firstDayOfMonth =
+        DateTime(_calendarMonth.year, _calendarMonth.month, 1);
+    final daysInMonth =
+        DateTime(_calendarMonth.year, _calendarMonth.month + 1, 0).day;
+    final leadingEmptyDays = firstDayOfMonth.weekday % 7;
+
+    return Column(
+      children: [
+        Container(
+          padding: const EdgeInsets.fromLTRB(16, 8, 16, 12),
+          color: Colors.pink[50],
+          child: Row(
+            children: [
+              IconButton(
+                icon: const Icon(Icons.chevron_left),
+                onPressed: () => setState(() {
+                  _calendarMonth =
+                      DateTime(_calendarMonth.year, _calendarMonth.month - 1);
+                }),
+              ),
+              Expanded(
+                child: Text(
+                  '${_monthName(_calendarMonth.month)} ${_calendarMonth.year}',
+                  textAlign: TextAlign.center,
+                  style: const TextStyle(
+                    fontSize: 18,
+                    fontWeight: FontWeight.bold,
+                  ),
+                ),
+              ),
+              IconButton(
+                icon: const Icon(Icons.chevron_right),
+                onPressed: () => setState(() {
+                  _calendarMonth =
+                      DateTime(_calendarMonth.year, _calendarMonth.month + 1);
+                }),
+              ),
+            ],
+          ),
+        ),
+        Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 12),
+          child: GridView.count(
+            shrinkWrap: true,
+            crossAxisCount: 7,
+            mainAxisSpacing: 8,
+            crossAxisSpacing: 8,
+            childAspectRatio: 1,
+            physics: const NeverScrollableScrollPhysics(),
+            children: ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat']
+                .map((label) => Center(child: Text(label)))
+                .toList(),
+          ),
+        ),
+        Expanded(
+          child: Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 12),
+            child: GridView.count(
+              crossAxisCount: 7,
+              mainAxisSpacing: 8,
+              crossAxisSpacing: 8,
+              childAspectRatio: 1,
+              children: [
+                ...List.generate(leadingEmptyDays, (_) => const SizedBox()),
+                ...List.generate(daysInMonth, (index) {
+                  final day = index + 1;
+                  final date =
+                      DateTime(_calendarMonth.year, _calendarMonth.month, day);
+                  final hasEntries = dateKeys.contains(
+                    DateTime(date.year, date.month, date.day).toIso8601String(),
+                  );
+
+                  return InkWell(
+                    borderRadius: BorderRadius.circular(16),
+                    onTap: () => _showEntriesForDate(date),
+                    child: Container(
+                      decoration: BoxDecoration(
+                        color: hasEntries ? Colors.pink[100] : Colors.white,
+                        borderRadius: BorderRadius.circular(16),
+                        border: Border.all(color: Colors.grey.shade200),
+                      ),
+                      child: Stack(
+                        alignment: Alignment.center,
+                        children: [
+                          Text(
+                            day.toString(),
+                            style: TextStyle(
+                              fontWeight: FontWeight.w600,
+                              color: hasEntries
+                                  ? Colors.pink[800]
+                                  : Colors.black87,
+                            ),
+                          ),
+                          if (hasEntries)
+                            Positioned(
+                              bottom: 4,
+                              child: Container(
+                                width: 6,
+                                height: 6,
+                                decoration: const BoxDecoration(
+                                  color: Colors.pink,
+                                  shape: BoxShape.circle,
+                                ),
+                              ),
+                            ),
+                        ],
+                      ),
+                    ),
+                  );
+                }),
+              ],
+            ),
+          ),
+        ),
+      ],
+    );
+  }
+
   Widget _buildAppDrawer() {
     return Drawer(
       child: Container(
@@ -271,13 +510,24 @@ class _HomePageState extends State<HomePage> {
               ),
             ),
             ListTile(
-              leading: const Icon(Icons.color_lens, color: Colors.pink),
-              title: const Text('Theme'),
+              leading: const Icon(Icons.calendar_today, color: Colors.pink),
+              title: const Text('Calendar View'),
+              onTap: () {
+                Navigator.of(context).pop();
+                setState(() {
+                  _currentView = 'calendar';
+                });
+              },
+            ),
+            ListTile(
+              leading: const Icon(Icons.checklist, color: Colors.pink),
+              title: const Text('Checklist / Daily Goals'),
               onTap: () {
                 Navigator.of(context).pop();
                 ScaffoldMessenger.of(context).showSnackBar(
                   const SnackBar(
-                      content: Text('Theme screen not implemented yet.')),
+                      content: Text(
+                          'Checklist / Daily goals screen not implemented yet.')),
                 );
               },
             ),
@@ -290,17 +540,6 @@ class _HomePageState extends State<HomePage> {
                   const SnackBar(
                       content:
                           Text('Export & Import screen not implemented yet.')),
-                );
-              },
-            ),
-            ListTile(
-              leading: const Icon(Icons.widgets, color: Colors.pink),
-              title: const Text('Widget'),
-              onTap: () {
-                Navigator.of(context).pop();
-                ScaffoldMessenger.of(context).showSnackBar(
-                  const SnackBar(
-                      content: Text('Widget screen not implemented yet.')),
                 );
               },
             ),
@@ -338,164 +577,184 @@ class _HomePageState extends State<HomePage> {
       drawer: _buildAppDrawer(),
       appBar: AppBar(
         title: const Text("My Diary"),
+        actions: [
+          if (_currentView == 'calendar')
+            IconButton(
+              icon: const Icon(Icons.list),
+              onPressed: () => setState(() {
+                _currentView = 'list';
+              }),
+            ),
+        ],
       ),
       body: _isLoading
           ? const Center(
               child: CircularProgressIndicator(),
             )
-          : Column(
-              children: [
-                Expanded(
-                  child: _diaries.isEmpty
-                      ? const Center(
-                          child: Text(
-                            'No diary entries yet. Tap + to add one.',
-                            textAlign: TextAlign.center,
-                            style:
-                                TextStyle(fontSize: 16, color: Colors.black54),
-                          ),
-                        )
-                      : ListView.builder(
-                          padding: const EdgeInsets.symmetric(
-                              vertical: 12, horizontal: 12),
-                          itemCount: _diaries.length,
-                          itemBuilder: (context, index) {
-                            final diary = _diaries[index];
-                            final feeling = diary['feeling'] as String? ?? '';
-                            final description =
-                                diary['description'] as String? ?? '';
-                            final createdAt = diary['createdAt'] as String?;
-                            final displayEmoji = feeling.isNotEmpty &&
-                                    RegExp(r'[\u{1F300}-\u{1FAFF}\u{1F600}-\u{1F64F}\u{1F680}-\u{1F6FF}\u{2600}-\u{26FF}]',
-                                            unicode: true)
-                                        .hasMatch(feeling)
-                                ? feeling
-                                : '😊';
-
-                            return Card(
-                              color: Colors.pink[50],
-                              shape: RoundedRectangleBorder(
-                                borderRadius: BorderRadius.circular(24),
+          : _currentView == 'calendar'
+              ? _buildCalendarView()
+              : Column(
+                  children: [
+                    Expanded(
+                      child: _diaries.isEmpty
+                          ? const Center(
+                              child: Text(
+                                'No diary entries yet. Tap + to add one.',
+                                textAlign: TextAlign.center,
+                                style: TextStyle(
+                                  fontSize: 16,
+                                  color: Colors.black54,
+                                ),
                               ),
-                              elevation: 2,
-                              margin: const EdgeInsets.symmetric(vertical: 8),
-                              child: Padding(
-                                padding: const EdgeInsets.all(16),
-                                child: Column(
-                                  crossAxisAlignment: CrossAxisAlignment.start,
-                                  children: [
-                                    Row(
+                            )
+                          : ListView.builder(
+                              padding: const EdgeInsets.symmetric(
+                                  vertical: 12, horizontal: 12),
+                              itemCount: _diaries.length,
+                              itemBuilder: (context, index) {
+                                final diary = _diaries[index];
+                                final feeling =
+                                    diary['feeling'] as String? ?? '';
+                                final description =
+                                    diary['description'] as String? ?? '';
+                                final createdAt = diary['createdAt'] as String?;
+                                final displayEmoji = feeling.isNotEmpty &&
+                                        RegExp(
+                                          r'[\u{1F300}-\u{1FAFF}\u{1F600}-\u{1F64F}\u{1F680}-\u{1F6FF}\u{2600}-\u{26FF}]',
+                                          unicode: true,
+                                        ).hasMatch(feeling)
+                                    ? feeling
+                                    : '😊';
+
+                                return Card(
+                                  color: Colors.pink[50],
+                                  shape: RoundedRectangleBorder(
+                                    borderRadius: BorderRadius.circular(24),
+                                  ),
+                                  elevation: 2,
+                                  margin:
+                                      const EdgeInsets.symmetric(vertical: 8),
+                                  child: Padding(
+                                    padding: const EdgeInsets.all(16),
+                                    child: Column(
                                       crossAxisAlignment:
                                           CrossAxisAlignment.start,
                                       children: [
-                                        Container(
-                                          width: 64,
-                                          height: 64,
-                                          decoration: BoxDecoration(
-                                            color: Colors.white,
-                                            borderRadius:
-                                                BorderRadius.circular(18),
-                                          ),
-                                          child: Column(
-                                            mainAxisAlignment:
-                                                MainAxisAlignment.center,
-                                            children: [
-                                              Text(
-                                                _formatDiaryDay(createdAt),
-                                                style: const TextStyle(
-                                                  fontSize: 20,
-                                                  fontWeight: FontWeight.bold,
-                                                ),
-                                              ),
-                                              const SizedBox(height: 4),
-                                              Text(
-                                                _formatDiaryMonth(createdAt),
-                                                style: const TextStyle(
-                                                  fontSize: 12,
-                                                  color: Colors.black54,
-                                                ),
-                                              ),
-                                            ],
-                                          ),
-                                        ),
-                                        const SizedBox(width: 16),
-                                        Expanded(
-                                          child: Column(
-                                            crossAxisAlignment:
-                                                CrossAxisAlignment.start,
-                                            children: [
-                                              Text(
-                                                feeling,
-                                                style: const TextStyle(
-                                                  fontSize: 20,
-                                                  fontWeight: FontWeight.w700,
-                                                ),
-                                              ),
-                                              const SizedBox(height: 8),
-                                              Text(
-                                                description,
-                                                style: const TextStyle(
-                                                  fontSize: 14,
-                                                  color: Colors.black87,
-                                                ),
-                                              ),
-                                            ],
-                                          ),
-                                        ),
-                                        CircleAvatar(
-                                          radius: 22,
-                                          backgroundColor: Colors.pink[100],
-                                          child: Text(
-                                            displayEmoji,
-                                            style:
-                                                const TextStyle(fontSize: 20),
-                                          ),
-                                        ),
-                                      ],
-                                    ),
-                                    const SizedBox(height: 12),
-                                    Row(
-                                      mainAxisAlignment:
-                                          MainAxisAlignment.spaceBetween,
-                                      children: [
-                                        Text(
-                                          _formatDiaryTime(createdAt),
-                                          style: TextStyle(
-                                            fontSize: 12,
-                                            color: Colors.grey[700],
-                                          ),
-                                        ),
                                         Row(
+                                          crossAxisAlignment:
+                                              CrossAxisAlignment.start,
                                           children: [
-                                            IconButton(
-                                              icon: const Icon(
-                                                Icons.edit,
-                                                color: Colors.teal,
+                                            Container(
+                                              width: 64,
+                                              height: 64,
+                                              decoration: BoxDecoration(
+                                                color: Colors.white,
+                                                borderRadius:
+                                                    BorderRadius.circular(18),
                                               ),
-                                              onPressed: () =>
-                                                  _showForm(diary['id']),
-                                            ),
-                                            IconButton(
-                                              icon: const Icon(
-                                                Icons.delete,
-                                                color: Colors.redAccent,
+                                              child: Column(
+                                                mainAxisAlignment:
+                                                    MainAxisAlignment.center,
+                                                children: [
+                                                  Text(
+                                                    _formatDiaryDay(createdAt),
+                                                    style: const TextStyle(
+                                                      fontSize: 20,
+                                                      fontWeight:
+                                                          FontWeight.bold,
+                                                    ),
+                                                  ),
+                                                  const SizedBox(height: 4),
+                                                  Text(
+                                                    _formatDiaryMonth(
+                                                        createdAt),
+                                                    style: const TextStyle(
+                                                      fontSize: 12,
+                                                      color: Colors.black54,
+                                                    ),
+                                                  ),
+                                                ],
                                               ),
-                                              onPressed: () =>
-                                                  _deleteDiary(diary['id']),
                                             ),
+                                            const SizedBox(width: 16),
+                                            Expanded(
+                                              child: Column(
+                                                crossAxisAlignment:
+                                                    CrossAxisAlignment.start,
+                                                children: [
+                                                  Text(
+                                                    feeling,
+                                                    style: const TextStyle(
+                                                      fontSize: 20,
+                                                      fontWeight:
+                                                          FontWeight.w700,
+                                                    ),
+                                                  ),
+                                                  const SizedBox(height: 8),
+                                                  Text(
+                                                    description,
+                                                    style: const TextStyle(
+                                                      fontSize: 14,
+                                                      color: Colors.black87,
+                                                    ),
+                                                  ),
+                                                ],
+                                              ),
+                                            ),
+                                            CircleAvatar(
+                                              radius: 22,
+                                              backgroundColor: Colors.pink[100],
+                                              child: Text(
+                                                displayEmoji,
+                                                style: const TextStyle(
+                                                    fontSize: 20),
+                                              ),
+                                            ),
+                                          ],
+                                        ),
+                                        const SizedBox(height: 12),
+                                        Row(
+                                          mainAxisAlignment:
+                                              MainAxisAlignment.spaceBetween,
+                                          children: [
+                                            Text(
+                                              _formatDiaryTime(createdAt),
+                                              style: TextStyle(
+                                                fontSize: 12,
+                                                color: Colors.grey[700],
+                                              ),
+                                            ),
+                                            Row(
+                                              children: [
+                                                IconButton(
+                                                  icon: const Icon(
+                                                    Icons.edit,
+                                                    color: Colors.teal,
+                                                  ),
+                                                  onPressed: () =>
+                                                      _showForm(diary['id']),
+                                                ),
+                                                IconButton(
+                                                  icon: const Icon(
+                                                    Icons.delete,
+                                                    color: Colors.redAccent,
+                                                  ),
+                                                  onPressed: () =>
+                                                      _deleteDiary(diary['id']),
+                                                ),
+                                              ],
+                                            )
                                           ],
                                         )
                                       ],
-                                    )
-                                  ],
-                                ),
-                              ),
-                            );
-                          },
-                        ),
+                                    ),
+                                  ),
+                                );
+                              },
+                            ),
+                    ),
+                  ],
                 ),
-              ],
-            ),
       floatingActionButtonLocation: FloatingActionButtonLocation.endDocked,
       floatingActionButton: FloatingActionButton(
         child: const Icon(Icons.add),
