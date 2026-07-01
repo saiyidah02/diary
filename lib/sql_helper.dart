@@ -2,9 +2,8 @@ import 'package:flutter/foundation.dart';
 import 'package:sqflite/sqflite.dart' as sql;
 
 class SQLHelper {
-  //Future enables you to run tasks asynchronously in order to free up any other threads that shouldn't be blocked.
+  // Future enables you to run tasks asynchronously in order to free up any other threads that shouldn't be blocked.
   static Future<void> createTables(sql.Database database) async {
-    
     await database.execute("""CREATE TABLE diary(
         id INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL,
         feeling TEXT,
@@ -13,17 +12,16 @@ class SQLHelper {
       )
       """);
   }
-// id: the id of a diary
-// feeling, description: emotion and description of your feeling
-// created_at: the time that the diary was created. It will be automatically handled by SQLite
 
   static Future<sql.Database> db() async {
     return sql.openDatabase(
       'diaryawie.db',
-      version: 1,
+      version: 2,
       onCreate: (sql.Database database, int version) async {
         await createTables(database);
       },
+      onUpgrade:
+          (sql.Database database, int oldVersion, int newVersion) async {},
     );
   }
 
@@ -40,7 +38,7 @@ class SQLHelper {
   // Read all diaries
   static Future<List<Map<String, dynamic>>> getDiaries() async {
     final db = await SQLHelper.db();
-    return db.query('diary', orderBy: "id");
+    return db.query('diary', orderBy: 'id DESC');
   }
 
   // Read a single diary by id

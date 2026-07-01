@@ -13,13 +13,25 @@ class _HomePageState extends State<HomePage> {
   List<Map<String, dynamic>> _diaries = [];
 
   bool _isLoading = true;
-  // This function is used to fetch all data from the database
+
+  // This function is used to fetch all diary data from the database
   void _refreshDiaries() async {
-    final data = await SQLHelper.getDiaries();
-    setState(() {
-      _diaries = data;
-      _isLoading = false;
-    });
+    try {
+      final data = await SQLHelper.getDiaries();
+      if (mounted) {
+        setState(() {
+          _diaries = data;
+          _isLoading = false;
+        });
+      }
+    } catch (e) {
+      debugPrint("Error loading diaries: $e");
+      if (mounted) {
+        setState(() {
+          _isLoading = false;
+        });
+      }
+    }
   }
 
   @override
@@ -41,75 +53,144 @@ class _HomePageState extends State<HomePage> {
           _diaries.firstWhere((element) => element['id'] == id);
       _feelingController.text = existingDiary['feeling'];
       _descriptionController.text = existingDiary['description'];
+    } else {
+      _feelingController.clear();
+      _descriptionController.clear();
     }
 
     showModalBottomSheet(
         context: context,
         elevation: 5,
         isScrollControlled: true,
-        builder: (_) => Container(
-              padding: EdgeInsets.only(
-                top: 15,
-                left: 15,
-                right: 15,
-                // this will prevent the soft keyboard from covering the text fields
-                bottom: MediaQuery.of(context).viewInsets.bottom + 120,
-              ),
-              child: Column(
-                mainAxisSize: MainAxisSize.min,
-                crossAxisAlignment: CrossAxisAlignment.end,
-                children: [
-                  TextField(
-                    controller: _feelingController,
-                    decoration: const InputDecoration(hintText: 'Feeling'),
-                  ),
-                  const SizedBox(
-                    height: 10,
-                  ),
-                  TextField(
-                    controller: _descriptionController,
-                    decoration: const InputDecoration(hintText: 'Description'),
-                  ),
-                  const SizedBox(
-                    height: 20,
-                  ),
-                  ElevatedButton(
-                    onPressed: () async {
-                      // Save new diary
-                      if (id == null) {
-                        await _addDiary();
-                      }
+        shape: const RoundedRectangleBorder(
+          borderRadius: BorderRadius.vertical(top: Radius.circular(16)),
+        ),
+        builder: (_) => SingleChildScrollView(
+              child: Container(
+                padding: EdgeInsets.only(
+                  top: 15,
+                  left: 15,
+                  right: 15,
+                  bottom: MediaQuery.of(context).viewInsets.bottom + 20,
+                ),
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  crossAxisAlignment: CrossAxisAlignment.end,
+                  children: [
+                    TextField(
+                      controller: _feelingController,
+                      decoration: const InputDecoration(
+                        hintText: 'Feeling',
+                        labelText: 'Emotion',
+                        suffixIcon: Icon(Icons.emoji_emotions),
+                      ),
+                    ),
+                    const SizedBox(
+                      height: 10,
+                    ),
+                    TextField(
+                      controller: _descriptionController,
+                      decoration: const InputDecoration(
+                        hintText: 'Describe your emotion',
+                        labelText: 'Describe emotion',
+                      ),
+                      maxLines: 3,
+                    ),
+                    const SizedBox(
+                      height: 20,
+                    ),
+                    ElevatedButton(
+                      onPressed: () async {
+                        final feeling = _feelingController.text.trim();
+                        final description = _descriptionController.text.trim();
 
-                      if (id != null) {
-                        await _updateDiary(id);
-                      }
+                        if (feeling.isEmpty || description.isEmpty) {
+                          ScaffoldMessenger.of(context).showSnackBar(
+                            const SnackBar(
+                              content: Text(
+                                  'Please enter both emotion and description.'),
+                            ),
+                          );
+                          return;
+                        }
 
-                      // Clear the text fields
-                      _feelingController.text = '';
-                      _descriptionController.text = '';
+                        try {
+                          if (id == null) {
+                            final insertedId = await _addDiary();
+                            if (insertedId > 0) {
+                              ScaffoldMessenger.of(context).showSnackBar(
+                                const SnackBar(
+                                  content:
+                                      Text('Diary entry saved successfully.'),
+                                ),
+                              );
+                            } else {
+                              ScaffoldMessenger.of(context).showSnackBar(
+                                const SnackBar(
+                                  content:
+                                      Text('Unable to save the diary entry.'),
+                                ),
+                              );
+                              return;
+                            }
+                          } else {
+                            final updated = await _updateDiary(id);
+                            if (updated > 0) {
+                              ScaffoldMessenger.of(context).showSnackBar(
+                                const SnackBar(
+                                  content:
+                                      Text('Diary entry updated successfully.'),
+                                ),
+                              );
+                            } else {
+                              ScaffoldMessenger.of(context).showSnackBar(
+                                const SnackBar(
+                                  content:
+                                      Text('Unable to update the diary entry.'),
+                                ),
+                              );
+                              return;
+                            }
+                          }
+                        } catch (e) {
+                          debugPrint('Error saving diary: $e');
+                          ScaffoldMessenger.of(context).showSnackBar(
+                            SnackBar(
+                              content: Text('Error saving diary: $e'),
+                            ),
+                          );
+                          return;
+                        }
 
-                      // Close the bottom sheet
-                      Navigator.of(context).pop();
-                    },
-                    child: Text(id == null ? 'Create New' : 'Update'),
-                  )
-                ],
+                        // Clear the text fields
+                        _feelingController.clear();
+                        _descriptionController.clear();
+
+                        // Close the bottom sheet
+                        Navigator.of(context).pop();
+                      },
+                      child: Text(id == null ? 'Create New' : 'Update'),
+                    )
+                  ],
+                ),
               ),
             ));
   }
 
 // Insert a new diary to the database
-  Future<void> _addDiary() async {
-    await SQLHelper.createDiary(
+  Future<int> _addDiary() async {
+    final id = await SQLHelper.createDiary(
         _feelingController.text, _descriptionController.text);
     _refreshDiaries();
+    return id;
   }
 
   // Update an existing diary
-  Future<void> _updateDiary(int id) async {
-    await SQLHelper.updateDiary(
+  Future<int> _updateDiary(int id) async {
+    final result = await SQLHelper.updateDiary(
         id, _feelingController.text, _descriptionController.text);
     _refreshDiaries();
+    return result;
   }
 
   // Delete an item
@@ -121,9 +202,140 @@ class _HomePageState extends State<HomePage> {
     _refreshDiaries();
   }
 
+  DateTime? _parseDiaryDate(String? createdAt) {
+    if (createdAt == null || createdAt.isEmpty) return null;
+    return DateTime.tryParse(createdAt);
+  }
+
+  String _formatDiaryDay(String? createdAt) {
+    final parsed = _parseDiaryDate(createdAt);
+    if (parsed == null) return '';
+    return parsed.day.toString().padLeft(2, '0');
+  }
+
+  String _formatDiaryMonth(String? createdAt) {
+    final parsed = _parseDiaryDate(createdAt);
+    if (parsed == null) return '';
+    const months = [
+      'Jan',
+      'Feb',
+      'Mar',
+      'Apr',
+      'May',
+      'Jun',
+      'Jul',
+      'Aug',
+      'Sep',
+      'Oct',
+      'Nov',
+      'Dec'
+    ];
+    return months[parsed.month - 1];
+  }
+
+  String _formatDiaryTime(String? createdAt) {
+    final parsed = _parseDiaryDate(createdAt);
+    if (parsed == null) return createdAt ?? '';
+    return '${parsed.hour.toString().padLeft(2, '0')}:${parsed.minute.toString().padLeft(2, '0')}';
+  }
+
+  Widget _buildAppDrawer() {
+    return Drawer(
+      child: Container(
+        color: Colors.pink[50],
+        child: ListView(
+          padding: EdgeInsets.zero,
+          children: [
+            DrawerHeader(
+              decoration: BoxDecoration(
+                color: Colors.pink[200],
+              ),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: const [
+                  SizedBox(height: 8),
+                  Text(
+                    'MyDiary',
+                    style: TextStyle(
+                      color: Colors.white,
+                      fontSize: 24,
+                      fontWeight: FontWeight.bold,
+                    ),
+                  ),
+                  SizedBox(height: 8),
+                  Text(
+                    'Personal journal app',
+                    style: TextStyle(color: Colors.white70, fontSize: 14),
+                  ),
+                ],
+              ),
+            ),
+            ListTile(
+              leading: const Icon(Icons.color_lens, color: Colors.pink),
+              title: const Text('Theme'),
+              onTap: () {
+                Navigator.of(context).pop();
+                ScaffoldMessenger.of(context).showSnackBar(
+                  const SnackBar(
+                      content: Text('Theme screen not implemented yet.')),
+                );
+              },
+            ),
+            ListTile(
+              leading: const Icon(Icons.import_export, color: Colors.pink),
+              title: const Text('Export & Import'),
+              onTap: () {
+                Navigator.of(context).pop();
+                ScaffoldMessenger.of(context).showSnackBar(
+                  const SnackBar(
+                      content:
+                          Text('Export & Import screen not implemented yet.')),
+                );
+              },
+            ),
+            ListTile(
+              leading: const Icon(Icons.widgets, color: Colors.pink),
+              title: const Text('Widget'),
+              onTap: () {
+                Navigator.of(context).pop();
+                ScaffoldMessenger.of(context).showSnackBar(
+                  const SnackBar(
+                      content: Text('Widget screen not implemented yet.')),
+                );
+              },
+            ),
+            ListTile(
+              leading: const Icon(Icons.share, color: Colors.pink),
+              title: const Text('Share App'),
+              onTap: () {
+                Navigator.of(context).pop();
+                ScaffoldMessenger.of(context).showSnackBar(
+                  const SnackBar(
+                      content: Text('Share App screen not implemented yet.')),
+                );
+              },
+            ),
+            ListTile(
+              leading: const Icon(Icons.settings, color: Colors.pink),
+              title: const Text('Settings'),
+              onTap: () {
+                Navigator.of(context).pop();
+                ScaffoldMessenger.of(context).showSnackBar(
+                  const SnackBar(
+                      content: Text('Settings screen not implemented yet.')),
+                );
+              },
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
+      drawer: _buildAppDrawer(),
       appBar: AppBar(
         title: const Text("My Diary"),
       ),
@@ -131,153 +343,164 @@ class _HomePageState extends State<HomePage> {
           ? const Center(
               child: CircularProgressIndicator(),
             )
-          : _diaries.isEmpty
-              ? const Center(
-                  child: Text(
-                    'No diary entries yet. Tap + to add one.',
-                    textAlign: TextAlign.center,
-                    style: TextStyle(fontSize: 16, color: Colors.black54),
-                  ),
-                )
-              : ListView.builder(
-                  padding:
-                      const EdgeInsets.symmetric(vertical: 12, horizontal: 12),
-                  itemCount: _diaries.length,
-                  itemBuilder: (context, index) {
-                    final diary = _diaries[index];
-                    return Card(
-                      color: Colors.teal[50],
-                      shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(16),
-                      ),
-                      elevation: 2,
-                      margin: const EdgeInsets.symmetric(vertical: 8),
-                      child: ListTile(
-                        contentPadding: const EdgeInsets.symmetric(
-                          vertical: 14,
-                          horizontal: 16,
-                        ),
-                        leading: CircleAvatar(
-                          radius: 26,
-                          backgroundColor: Colors.white,
-                          child: ClipOval(
-                            child: Image.asset(
-                              'assets/images/happy.gif',
-                              fit: BoxFit.cover,
-                              width: 42,
-                              height: 42,
-                            ),
+          : Column(
+              children: [
+                Expanded(
+                  child: _diaries.isEmpty
+                      ? const Center(
+                          child: Text(
+                            'No diary entries yet. Tap + to add one.',
+                            textAlign: TextAlign.center,
+                            style:
+                                TextStyle(fontSize: 16, color: Colors.black54),
                           ),
-                        ),
-                        title: Text(
-                          diary['feeling'] ?? '',
-                          style: const TextStyle(
-                            fontSize: 18,
-                            fontWeight: FontWeight.w700,
-                          ),
-                        ),
-                        subtitle: Padding(
-                          padding: const EdgeInsets.only(top: 8),
-                          child: Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            mainAxisSize: MainAxisSize.min,
-                            children: [
-                              Text(
-                                diary['description'] ?? '',
-                                style: const TextStyle(fontSize: 14),
+                        )
+                      : ListView.builder(
+                          padding: const EdgeInsets.symmetric(
+                              vertical: 12, horizontal: 12),
+                          itemCount: _diaries.length,
+                          itemBuilder: (context, index) {
+                            final diary = _diaries[index];
+                            final feeling = diary['feeling'] as String? ?? '';
+                            final description =
+                                diary['description'] as String? ?? '';
+                            final createdAt = diary['createdAt'] as String?;
+                            final displayEmoji = feeling.isNotEmpty &&
+                                    RegExp(r'[\u{1F300}-\u{1FAFF}\u{1F600}-\u{1F64F}\u{1F680}-\u{1F6FF}\u{2600}-\u{26FF}]',
+                                            unicode: true)
+                                        .hasMatch(feeling)
+                                ? feeling
+                                : '😊';
+
+                            return Card(
+                              color: Colors.pink[50],
+                              shape: RoundedRectangleBorder(
+                                borderRadius: BorderRadius.circular(24),
                               ),
-                              const SizedBox(height: 8),
-                              Text(
-                                diary['createdAt'] ?? '',
-                                style: TextStyle(
-                                  fontSize: 12,
-                                  color: Colors.grey[700],
+                              elevation: 2,
+                              margin: const EdgeInsets.symmetric(vertical: 8),
+                              child: Padding(
+                                padding: const EdgeInsets.all(16),
+                                child: Column(
+                                  crossAxisAlignment: CrossAxisAlignment.start,
+                                  children: [
+                                    Row(
+                                      crossAxisAlignment:
+                                          CrossAxisAlignment.start,
+                                      children: [
+                                        Container(
+                                          width: 64,
+                                          height: 64,
+                                          decoration: BoxDecoration(
+                                            color: Colors.white,
+                                            borderRadius:
+                                                BorderRadius.circular(18),
+                                          ),
+                                          child: Column(
+                                            mainAxisAlignment:
+                                                MainAxisAlignment.center,
+                                            children: [
+                                              Text(
+                                                _formatDiaryDay(createdAt),
+                                                style: const TextStyle(
+                                                  fontSize: 20,
+                                                  fontWeight: FontWeight.bold,
+                                                ),
+                                              ),
+                                              const SizedBox(height: 4),
+                                              Text(
+                                                _formatDiaryMonth(createdAt),
+                                                style: const TextStyle(
+                                                  fontSize: 12,
+                                                  color: Colors.black54,
+                                                ),
+                                              ),
+                                            ],
+                                          ),
+                                        ),
+                                        const SizedBox(width: 16),
+                                        Expanded(
+                                          child: Column(
+                                            crossAxisAlignment:
+                                                CrossAxisAlignment.start,
+                                            children: [
+                                              Text(
+                                                feeling,
+                                                style: const TextStyle(
+                                                  fontSize: 20,
+                                                  fontWeight: FontWeight.w700,
+                                                ),
+                                              ),
+                                              const SizedBox(height: 8),
+                                              Text(
+                                                description,
+                                                style: const TextStyle(
+                                                  fontSize: 14,
+                                                  color: Colors.black87,
+                                                ),
+                                              ),
+                                            ],
+                                          ),
+                                        ),
+                                        CircleAvatar(
+                                          radius: 22,
+                                          backgroundColor: Colors.pink[100],
+                                          child: Text(
+                                            displayEmoji,
+                                            style:
+                                                const TextStyle(fontSize: 20),
+                                          ),
+                                        ),
+                                      ],
+                                    ),
+                                    const SizedBox(height: 12),
+                                    Row(
+                                      mainAxisAlignment:
+                                          MainAxisAlignment.spaceBetween,
+                                      children: [
+                                        Text(
+                                          _formatDiaryTime(createdAt),
+                                          style: TextStyle(
+                                            fontSize: 12,
+                                            color: Colors.grey[700],
+                                          ),
+                                        ),
+                                        Row(
+                                          children: [
+                                            IconButton(
+                                              icon: const Icon(
+                                                Icons.edit,
+                                                color: Colors.teal,
+                                              ),
+                                              onPressed: () =>
+                                                  _showForm(diary['id']),
+                                            ),
+                                            IconButton(
+                                              icon: const Icon(
+                                                Icons.delete,
+                                                color: Colors.redAccent,
+                                              ),
+                                              onPressed: () =>
+                                                  _deleteDiary(diary['id']),
+                                            ),
+                                          ],
+                                        )
+                                      ],
+                                    )
+                                  ],
                                 ),
                               ),
-                            ],
-                          ),
+                            );
+                          },
                         ),
-                        trailing: SizedBox(
-                          width: 96,
-                          child: Row(
-                            mainAxisAlignment: MainAxisAlignment.end,
-                            children: [
-                              IconButton(
-                                icon:
-                                    const Icon(Icons.edit, color: Colors.teal),
-                                onPressed: () => _showForm(diary['id']),
-                              ),
-                              IconButton(
-                                icon: const Icon(Icons.delete,
-                                    color: Colors.redAccent),
-                                onPressed: () => _deleteDiary(diary['id']),
-                              ),
-                            ],
-                          ),
-                        ),
-                      ),
-                    );
-                  },
                 ),
+              ],
+            ),
       floatingActionButtonLocation: FloatingActionButtonLocation.endDocked,
       floatingActionButton: FloatingActionButton(
         child: const Icon(Icons.add),
-        onPressed: _showEntryOptions,
+        onPressed: () => _showForm(null),
       ),
     );
-  }
-
-  void _showEntryOptions() {
-    showModalBottomSheet(
-      context: context,
-      elevation: 5,
-      shape: const RoundedRectangleBorder(
-        borderRadius: BorderRadius.vertical(top: Radius.circular(16)),
-      ),
-      builder: (context) {
-        return SafeArea(
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              ListTile(
-                leading: const Icon(Icons.text_fields, color: Colors.teal),
-                title: const Text('Add text entry'),
-                onTap: () {
-                  Navigator.of(context).pop();
-                  _showForm(null);
-                },
-              ),
-              ListTile(
-                leading: const Icon(Icons.emoji_emotions, color: Colors.teal),
-                title: const Text('Add emoji entry'),
-                onTap: () {
-                  Navigator.of(context).pop();
-                  _showForm(null);
-                },
-              ),
-              ListTile(
-                leading: const Icon(Icons.mic, color: Colors.grey),
-                title: const Text('Add voice entry'),
-                onTap: () {
-                  Navigator.of(context).pop();
-                  _addVoiceEntry();
-                },
-              ),
-            ],
-          ),
-        );
-      },
-    );
-  }
-
-  void _addVoiceEntry() {
-    ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(
-          content: Text('Voice entry recording not implemented yet.')),
-    );
-  }
-
-  void _recordVoiceNote() {
-    _addVoiceEntry();
   }
 }
