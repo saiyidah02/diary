@@ -2,7 +2,7 @@ import 'package:flutter/foundation.dart';
 import 'package:sqflite/sqflite.dart' as sql;
 
 class SQLHelper {
-  // Future enables you to run tasks asynchronously in order to free up any other threads that shouldn't be blocked.
+  // Create tables
   static Future<void> createTables(sql.Database database) async {
     await database.execute("""CREATE TABLE diary(
         id INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL,
@@ -11,6 +11,7 @@ class SQLHelper {
         createdAt TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
       )
       """);
+
     await database.execute("""CREATE TABLE daily_goals(
         id INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL,
         text TEXT NOT NULL,
@@ -20,6 +21,7 @@ class SQLHelper {
       """);
   }
 
+  // Open database
   static Future<sql.Database> db() async {
     return sql.openDatabase(
       'diaryawie.db',
@@ -41,14 +43,12 @@ class SQLHelper {
     );
   }
 
-  // Create new diary (diaries)
-  static Future<int> createDiary(String feeling, String? descrption) async {
+  // Create new diary
+  static Future<int> createDiary(String feeling, String? description) async {
     final db = await SQLHelper.db();
-
-    final data = {'feeling': feeling, 'description': descrption};
-    final id = await db.insert('diary', data,
+    final data = {'feeling': feeling, 'description': description};
+    return db.insert('diary', data,
         conflictAlgorithm: sql.ConflictAlgorithm.replace);
-    return id;
   }
 
   // Read all diaries
@@ -57,30 +57,25 @@ class SQLHelper {
     return db.query('diary', orderBy: 'id DESC');
   }
 
-  // Read a single diary by id
-  // The app doesn't use this method but I put here in case you want to see it
+  // Read single diary
   static Future<List<Map<String, dynamic>>> getDiary(int id) async {
     final db = await SQLHelper.db();
     return db.query('diary', where: "id = ?", whereArgs: [id], limit: 1);
   }
 
-  // Update an diary by id
+  // Update diary
   static Future<int> updateDiary(
-      int id, String feeling, String? descrption) async {
+      int id, String feeling, String? description) async {
     final db = await SQLHelper.db();
-
     final data = {
       'feeling': feeling,
-      'description': descrption,
+      'description': description,
       'createdAt': DateTime.now().toString()
     };
-
-    final result =
-        await db.update('diary', data, where: "id = ?", whereArgs: [id]);
-    return result;
+    return db.update('diary', data, where: "id = ?", whereArgs: [id]);
   }
 
-  // Delete a  diary by id
+  // Delete diary
   static Future<void> deleteDiary(int id) async {
     final db = await SQLHelper.db();
     try {
@@ -90,16 +85,19 @@ class SQLHelper {
     }
   }
 
+  // Create goal
   static Future<int> createGoal(String text) async {
     final db = await SQLHelper.db();
     return db.insert('daily_goals', {'text': text, 'completed': 0});
   }
 
+  // Read goals
   static Future<List<Map<String, dynamic>>> getGoals() async {
     final db = await SQLHelper.db();
     return db.query('daily_goals', orderBy: 'id ASC');
   }
 
+  // Update goal
   static Future<int> updateGoal(int id, {required bool completed}) async {
     final db = await SQLHelper.db();
     return db.update(
