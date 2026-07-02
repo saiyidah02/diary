@@ -11,6 +11,7 @@ class HomePage extends StatefulWidget {
 class _HomePageState extends State<HomePage> {
   // All diaries
   List<Map<String, dynamic>> _diaries = [];
+  List<Map<String, dynamic>> _goals = [];
 
   bool _isLoading = true;
   String _currentView = 'list';
@@ -40,10 +41,52 @@ class _HomePageState extends State<HomePage> {
   void initState() {
     super.initState();
     _refreshDiaries(); // Loading the diary when the app starts
+    _refreshGoals();
+  }
+
+  @override
+  void dispose() {
+    _feelingController.dispose();
+    _descriptionController.dispose();
+    _goalController.dispose();
+    super.dispose();
   }
 
   final TextEditingController _feelingController = TextEditingController();
   final TextEditingController _descriptionController = TextEditingController();
+  final TextEditingController _goalController = TextEditingController();
+
+  void _refreshGoals() async {
+    try {
+      final data = await SQLHelper.getGoals();
+      if (mounted) {
+        setState(() {
+          _goals = data;
+        });
+      }
+    } catch (e) {
+      debugPrint('Error loading goals: $e');
+    }
+  }
+
+  Future<void> _addGoal() async {
+    final text = _goalController.text.trim();
+    if (text.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Please enter a goal first.')),
+      );
+      return;
+    }
+
+    await SQLHelper.createGoal(text);
+    _goalController.clear();
+    _refreshGoals();
+  }
+
+  Future<void> _toggleGoal(int id, bool completed) async {
+    await SQLHelper.updateGoal(id, completed: completed);
+    _refreshGoals();
+  }
 
   // This function will be triggered when the floating button is pressed
   // It will also be triggered when you want to update a diary
@@ -478,6 +521,112 @@ class _HomePageState extends State<HomePage> {
     );
   }
 
+  Widget _buildChecklistView() {
+    final completedGoals =
+        _goals.where((goal) => goal['completed'] == 1).length;
+    final totalGoals = _goals.length;
+    final progressValue = totalGoals == 0 ? 0.0 : completedGoals / totalGoals;
+    final progressPercent = (progressValue * 100).round();
+
+    return Padding(
+      padding: const EdgeInsets.all(16),
+      child: Column(
+        children: [
+          Card(
+            color: Colors.pink[50],
+            shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(20),
+            ),
+            child: Padding(
+              padding: const EdgeInsets.all(16),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Row(
+                    children: [
+                      const Icon(Icons.flag, color: Colors.pink),
+                      const SizedBox(width: 8),
+                      const Text(
+                        'Daily goals',
+                        style: TextStyle(
+                          fontSize: 18,
+                          fontWeight: FontWeight.bold,
+                        ),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 12),
+                  Text('$completedGoals of $totalGoals completed'),
+                  const SizedBox(height: 8),
+                  LinearProgressIndicator(
+                    value: progressValue,
+                    backgroundColor: Colors.pink[100],
+                    color: Colors.pink,
+                    minHeight: 10,
+                  ),
+                  const SizedBox(height: 8),
+                  Text(
+                    '$progressPercent%',
+                    style: const TextStyle(
+                      fontSize: 16,
+                      fontWeight: FontWeight.w600,
+                      color: Colors.pink,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ),
+          const SizedBox(height: 16),
+          Row(
+            children: [
+              Expanded(
+                child: TextField(
+                  controller: _goalController,
+                  decoration: const InputDecoration(
+                    hintText: 'Add a daily goal',
+                    border: OutlineInputBorder(),
+                  ),
+                ),
+              ),
+              const SizedBox(width: 8),
+              ElevatedButton(
+                onPressed: _addGoal,
+                child: const Text('Add Goal'),
+              ),
+            ],
+          ),
+          const SizedBox(height: 16),
+          Expanded(
+            child: _goals.isEmpty
+                ? const Center(
+                    child: Text('No goals yet. Add one to get started.'),
+                  )
+                : ListView.separated(
+                    itemCount: _goals.length,
+                    separatorBuilder: (_, __) => const SizedBox(height: 8),
+                    itemBuilder: (context, index) {
+                      final goal = _goals[index];
+                      final completed = goal['completed'] == 1;
+                      return Card(
+                        child: CheckboxListTile(
+                          value: completed,
+                          title: Text(goal['text'] as String? ?? ''),
+                          onChanged: (value) => _toggleGoal(
+                            goal['id'] as int,
+                            value ?? false,
+                          ),
+                          secondary: const Icon(Icons.check_circle_outline),
+                        ),
+                      );
+                    },
+                  ),
+          ),
+        ],
+      ),
+    );
+  }
+
   Widget _buildAppDrawer() {
     return Drawer(
       child: Container(
@@ -524,11 +673,9 @@ class _HomePageState extends State<HomePage> {
               title: const Text('Checklist / Daily Goals'),
               onTap: () {
                 Navigator.of(context).pop();
-                ScaffoldMessenger.of(context).showSnackBar(
-                  const SnackBar(
-                      content: Text(
-                          'Checklist / Daily goals screen not implemented yet.')),
-                );
+                setState(() {
+                  _currentView = 'checklist';
+                });
               },
             ),
             ListTile(
@@ -585,6 +732,13 @@ class _HomePageState extends State<HomePage> {
                 _currentView = 'list';
               }),
             ),
+          if (_currentView == 'checklist')
+            IconButton(
+              icon: const Icon(Icons.list),
+              onPressed: () => setState(() {
+                _currentView = 'list';
+              }),
+            ),
         ],
       ),
       body: _isLoading
@@ -593,168 +747,179 @@ class _HomePageState extends State<HomePage> {
             )
           : _currentView == 'calendar'
               ? _buildCalendarView()
-              : Column(
-                  children: [
-                    Expanded(
-                      child: _diaries.isEmpty
-                          ? const Center(
-                              child: Text(
-                                'No diary entries yet. Tap + to add one.',
-                                textAlign: TextAlign.center,
-                                style: TextStyle(
-                                  fontSize: 16,
-                                  color: Colors.black54,
-                                ),
-                              ),
-                            )
-                          : ListView.builder(
-                              padding: const EdgeInsets.symmetric(
-                                  vertical: 12, horizontal: 12),
-                              itemCount: _diaries.length,
-                              itemBuilder: (context, index) {
-                                final diary = _diaries[index];
-                                final feeling =
-                                    diary['feeling'] as String? ?? '';
-                                final description =
-                                    diary['description'] as String? ?? '';
-                                final createdAt = diary['createdAt'] as String?;
-                                final displayEmoji = feeling.isNotEmpty &&
-                                        RegExp(
-                                          r'[\u{1F300}-\u{1FAFF}\u{1F600}-\u{1F64F}\u{1F680}-\u{1F6FF}\u{2600}-\u{26FF}]',
-                                          unicode: true,
-                                        ).hasMatch(feeling)
-                                    ? feeling
-                                    : '😊';
-
-                                return Card(
-                                  color: Colors.pink[50],
-                                  shape: RoundedRectangleBorder(
-                                    borderRadius: BorderRadius.circular(24),
+              : _currentView == 'checklist'
+                  ? _buildChecklistView()
+                  : Column(
+                      children: [
+                        Expanded(
+                          child: _diaries.isEmpty
+                              ? const Center(
+                                  child: Text(
+                                    'No diary entries yet. Tap + to add one.',
+                                    textAlign: TextAlign.center,
+                                    style: TextStyle(
+                                      fontSize: 16,
+                                      color: Colors.black54,
+                                    ),
                                   ),
-                                  elevation: 2,
-                                  margin:
-                                      const EdgeInsets.symmetric(vertical: 8),
-                                  child: Padding(
-                                    padding: const EdgeInsets.all(16),
-                                    child: Column(
-                                      crossAxisAlignment:
-                                          CrossAxisAlignment.start,
-                                      children: [
-                                        Row(
+                                )
+                              : ListView.builder(
+                                  padding: const EdgeInsets.symmetric(
+                                      vertical: 12, horizontal: 12),
+                                  itemCount: _diaries.length,
+                                  itemBuilder: (context, index) {
+                                    final diary = _diaries[index];
+                                    final feeling =
+                                        diary['feeling'] as String? ?? '';
+                                    final description =
+                                        diary['description'] as String? ?? '';
+                                    final createdAt =
+                                        diary['createdAt'] as String?;
+                                    final displayEmoji = feeling.isNotEmpty &&
+                                            RegExp(
+                                              r'[\u{1F300}-\u{1FAFF}\u{1F600}-\u{1F64F}\u{1F680}-\u{1F6FF}\u{2600}-\u{26FF}]',
+                                              unicode: true,
+                                            ).hasMatch(feeling)
+                                        ? feeling
+                                        : '😊';
+
+                                    return Card(
+                                      color: Colors.pink[50],
+                                      shape: RoundedRectangleBorder(
+                                        borderRadius: BorderRadius.circular(24),
+                                      ),
+                                      elevation: 2,
+                                      margin: const EdgeInsets.symmetric(
+                                          vertical: 8),
+                                      child: Padding(
+                                        padding: const EdgeInsets.all(16),
+                                        child: Column(
                                           crossAxisAlignment:
                                               CrossAxisAlignment.start,
                                           children: [
-                                            Container(
-                                              width: 64,
-                                              height: 64,
-                                              decoration: BoxDecoration(
-                                                color: Colors.white,
-                                                borderRadius:
-                                                    BorderRadius.circular(18),
-                                              ),
-                                              child: Column(
-                                                mainAxisAlignment:
-                                                    MainAxisAlignment.center,
-                                                children: [
-                                                  Text(
-                                                    _formatDiaryDay(createdAt),
-                                                    style: const TextStyle(
-                                                      fontSize: 20,
-                                                      fontWeight:
-                                                          FontWeight.bold,
-                                                    ),
-                                                  ),
-                                                  const SizedBox(height: 4),
-                                                  Text(
-                                                    _formatDiaryMonth(
-                                                        createdAt),
-                                                    style: const TextStyle(
-                                                      fontSize: 12,
-                                                      color: Colors.black54,
-                                                    ),
-                                                  ),
-                                                ],
-                                              ),
-                                            ),
-                                            const SizedBox(width: 16),
-                                            Expanded(
-                                              child: Column(
-                                                crossAxisAlignment:
-                                                    CrossAxisAlignment.start,
-                                                children: [
-                                                  Text(
-                                                    feeling,
-                                                    style: const TextStyle(
-                                                      fontSize: 20,
-                                                      fontWeight:
-                                                          FontWeight.w700,
-                                                    ),
-                                                  ),
-                                                  const SizedBox(height: 8),
-                                                  Text(
-                                                    description,
-                                                    style: const TextStyle(
-                                                      fontSize: 14,
-                                                      color: Colors.black87,
-                                                    ),
-                                                  ),
-                                                ],
-                                              ),
-                                            ),
-                                            CircleAvatar(
-                                              radius: 22,
-                                              backgroundColor: Colors.pink[100],
-                                              child: Text(
-                                                displayEmoji,
-                                                style: const TextStyle(
-                                                    fontSize: 20),
-                                              ),
-                                            ),
-                                          ],
-                                        ),
-                                        const SizedBox(height: 12),
-                                        Row(
-                                          mainAxisAlignment:
-                                              MainAxisAlignment.spaceBetween,
-                                          children: [
-                                            Text(
-                                              _formatDiaryTime(createdAt),
-                                              style: TextStyle(
-                                                fontSize: 12,
-                                                color: Colors.grey[700],
-                                              ),
-                                            ),
                                             Row(
+                                              crossAxisAlignment:
+                                                  CrossAxisAlignment.start,
                                               children: [
-                                                IconButton(
-                                                  icon: const Icon(
-                                                    Icons.edit,
-                                                    color: Colors.teal,
+                                                Container(
+                                                  width: 64,
+                                                  height: 64,
+                                                  decoration: BoxDecoration(
+                                                    color: Colors.white,
+                                                    borderRadius:
+                                                        BorderRadius.circular(
+                                                            18),
                                                   ),
-                                                  onPressed: () =>
-                                                      _showForm(diary['id']),
-                                                ),
-                                                IconButton(
-                                                  icon: const Icon(
-                                                    Icons.delete,
-                                                    color: Colors.redAccent,
+                                                  child: Column(
+                                                    mainAxisAlignment:
+                                                        MainAxisAlignment
+                                                            .center,
+                                                    children: [
+                                                      Text(
+                                                        _formatDiaryDay(
+                                                            createdAt),
+                                                        style: const TextStyle(
+                                                          fontSize: 20,
+                                                          fontWeight:
+                                                              FontWeight.bold,
+                                                        ),
+                                                      ),
+                                                      const SizedBox(height: 4),
+                                                      Text(
+                                                        _formatDiaryMonth(
+                                                            createdAt),
+                                                        style: const TextStyle(
+                                                          fontSize: 12,
+                                                          color: Colors.black54,
+                                                        ),
+                                                      ),
+                                                    ],
                                                   ),
-                                                  onPressed: () =>
-                                                      _deleteDiary(diary['id']),
                                                 ),
+                                                const SizedBox(width: 16),
+                                                Expanded(
+                                                  child: Column(
+                                                    crossAxisAlignment:
+                                                        CrossAxisAlignment
+                                                            .start,
+                                                    children: [
+                                                      Text(
+                                                        feeling,
+                                                        style: const TextStyle(
+                                                          fontSize: 20,
+                                                          fontWeight:
+                                                              FontWeight.w700,
+                                                        ),
+                                                      ),
+                                                      const SizedBox(height: 8),
+                                                      Text(
+                                                        description,
+                                                        style: const TextStyle(
+                                                          fontSize: 14,
+                                                          color: Colors.black87,
+                                                        ),
+                                                      ),
+                                                    ],
+                                                  ),
+                                                ),
+                                                CircleAvatar(
+                                                  radius: 22,
+                                                  backgroundColor:
+                                                      Colors.pink[100],
+                                                  child: Text(
+                                                    displayEmoji,
+                                                    style: const TextStyle(
+                                                        fontSize: 20),
+                                                  ),
+                                                ),
+                                              ],
+                                            ),
+                                            const SizedBox(height: 12),
+                                            Row(
+                                              mainAxisAlignment:
+                                                  MainAxisAlignment
+                                                      .spaceBetween,
+                                              children: [
+                                                Text(
+                                                  _formatDiaryTime(createdAt),
+                                                  style: TextStyle(
+                                                    fontSize: 12,
+                                                    color: Colors.grey[700],
+                                                  ),
+                                                ),
+                                                Row(
+                                                  children: [
+                                                    IconButton(
+                                                      icon: const Icon(
+                                                        Icons.edit,
+                                                        color: Colors.teal,
+                                                      ),
+                                                      onPressed: () =>
+                                                          _showForm(
+                                                              diary['id']),
+                                                    ),
+                                                    IconButton(
+                                                      icon: const Icon(
+                                                        Icons.delete,
+                                                        color: Colors.redAccent,
+                                                      ),
+                                                      onPressed: () =>
+                                                          _deleteDiary(
+                                                              diary['id']),
+                                                    ),
+                                                  ],
+                                                )
                                               ],
                                             )
                                           ],
-                                        )
-                                      ],
-                                    ),
-                                  ),
-                                );
-                              },
-                            ),
+                                        ),
+                                      ),
+                                    );
+                                  },
+                                ),
+                        ),
+                      ],
                     ),
-                  ],
-                ),
       floatingActionButtonLocation: FloatingActionButtonLocation.endDocked,
       floatingActionButton: FloatingActionButton(
         child: const Icon(Icons.add),
